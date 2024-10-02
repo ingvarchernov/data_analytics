@@ -1,9 +1,8 @@
-<<<<<<< HEAD
 import numpy as np
 import logging
 import matplotlib.pyplot as plt
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+import tensorflow as tf
+from keras.api import Sequential, layers
 from bi_api.data_extraction import get_historical_data
 from indicators.technical_indicators import calculate_rsi, calculate_macd, calculate_bollinger_bands, calculate_stochastic
 from sklearn.preprocessing import MinMaxScaler
@@ -50,9 +49,9 @@ def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=50, batch_size=32):
 
     logger.info("Створення та навчання моделі LSTM.")
     model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
-    model.add(LSTM(units=50))
-    model.add(Dense(units=1))
+    model.add(layers.LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])))
+    model.add(layers.LSTM(units=50))
+    model.add(layers.Dense(units=1))
 
     model.compile(optimizer='adam', loss='mean_squared_error')
     history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_split=0.1, verbose=1)
@@ -73,35 +72,3 @@ def plot_training_results(history, symbol):
     plt.ylabel('Втрати (MSE)')
     plt.legend()
     plt.show()
-=======
-import logging
-import numpy as np
-import tensorflow as tf
-from keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-
-logger = logging.getLogger(__name__)
-
-
-def create_model(input_shape):
-    logger.info(f"Створення моделі з входом форми {input_shape}.")
-    model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=input_shape))
-    model.add(Dropout(0.2))
-    model.add(LSTM(units=50, return_sequences=False))
-    model.add(Dropout(0.2))
-    model.add(Dense(units=25))
-    model.add(Dense(units=1, activation='tanh'))
-    model.compile(optimizer='adam', loss='mean_squared_error')
-    logger.info(f"Модель успішно створена.")
-    return model
-
-
-def train_model(model, X_train, y_train, epochs=50, batch_size=64):
-    logger.info(f"Початок тренування моделі на {epochs} епохах з batch_size {batch_size}.")
-    X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
-    history = model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs)
-    logger.info(f"Тренування моделі завершено.")
-    logger.debug(f"Історія тренувань: {history.history}")
-    return model
->>>>>>> 9ee9d2292d3411fcadabb0a0fde575f6cb563211

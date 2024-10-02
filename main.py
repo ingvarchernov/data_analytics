@@ -3,10 +3,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram_bot.pair_handler import PairHandler
 from telegram_bot.indicator_handler import IndicatorHandler
-<<<<<<< HEAD
 from telegram_bot.training_handler import TrainingHandler
-=======
->>>>>>> 9ee9d2292d3411fcadabb0a0fde575f6cb563211
 from config import TELEGRAM_TOKEN
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -30,10 +27,7 @@ def main():
     # Додаємо обробники команд та натискань
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-<<<<<<< HEAD
     application.add_handler(CommandHandler("train_model", TrainingHandler.start_training))
-=======
->>>>>>> 9ee9d2292d3411fcadabb0a0fde575f6cb563211
     application.add_handler(CallbackQueryHandler(PairHandler.handle_pair_selection))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, IndicatorHandler.handle_indicator_selection))

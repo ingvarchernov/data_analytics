@@ -3,11 +3,7 @@ python-telegram-bot
 tensorflow
 pandas
 numpy
-<<<<<<< HEAD
 matplotlib
 ta
 mplfinance
 scikit-learn
-=======
-matplotlib
->>>>>>> 9ee9d2292d3411fcadabb0a0fde575f6cb563211
