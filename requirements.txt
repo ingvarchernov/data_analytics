@@ -1,0 +1,9 @@
+python-binance
+python-telegram-bot
+tensorflow
+pandas
+numpy
+matplotlib
+ta
+mplfinance
+scikit-learn
