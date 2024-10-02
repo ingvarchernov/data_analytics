@@ -1,7 +1,10 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from telegram_bot.indicator_handler import IndicatorHandler
+<<<<<<< HEAD
 from telegram_bot.training_handler import TrainingHandler
+=======
+>>>>>>> 9ee9d2292d3411fcadabb0a0fde575f6cb563211
 
 
 class PairHandler:
@@ -12,8 +15,12 @@ class PairHandler:
             [InlineKeyboardButton("BTC/USDT", callback_data='BTCUSDT')],
             [InlineKeyboardButton("ETH/USDT", callback_data='ETHUSDT')],
             [InlineKeyboardButton("LTC/USDT", callback_data='LTCUSDT')],
+<<<<<<< HEAD
             [InlineKeyboardButton("BNB/USDT", callback_data='BNBUSDT')],
             [InlineKeyboardButton("Запустити тренування", callback_data='train_model')]
+=======
+            [InlineKeyboardButton("BNB/USDT", callback_data='BNBUSDT')]
+>>>>>>> 9ee9d2292d3411fcadabb0a0fde575f6cb563211
         ]
 
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -25,11 +32,14 @@ class PairHandler:
         query = update.callback_query
         await query.answer()
 
+<<<<<<< HEAD
          # Якщо вибрано тренування
         if query.data == 'train_model':
             await TrainingHandler.start_training(update, context)  # Запускаємо тренування моделі
             return
 
+=======
+>>>>>>> 9ee9d2292d3411fcadabb0a0fde575f6cb563211
         # Зберігаємо обрану пару
         selected_pair = query.data
         context.user_data['selected_pair'] = selected_pair
