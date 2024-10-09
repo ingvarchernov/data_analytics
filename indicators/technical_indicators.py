@@ -71,12 +71,35 @@ def calculate_ema(data, window=14):
 def calculate_atr(data, window=14):
     logger.info(f"Розрахунок ATR з вікном {window}.")
 
+    # Перевіряємо, чи є потрібні стовпці в даних
     if not all(col in data.columns for col in ['high', 'low', 'close']):
         raise ValueError("`data` must contain 'high', 'low', and 'close' columns.")
 
+    # Перетворення стовпця 'high' на числовий тип і видалення NaN
+    data['high'] = pd.to_numeric(data['high'], errors='coerce')
+    data['low'] = pd.to_numeric(data['low'], errors='coerce')
+    data['close'] = pd.to_numeric(data['close'], errors='coerce')
+
+    # Логування та перевірка на наявність некоректних даних
+    if data[['high', 'low', 'close']].isnull().any().any():
+        #logger.error(f"Наявність NaN після конвертації в стовпцях 'high', 'low', або 'close':\n{data[['high', 'low', 'close']].isnull().sum()}")
+        raise ValueError("Дані містять NaN значення після перетворення на числовий формат.")
+
+    data.dropna(subset=['high', 'low', 'close'], inplace=True)
+
+    if data.empty:
+        logger.error("Після видалення NaN даних недостатньо для розрахунку ATR.")
+        raise ValueError("Недостатньо даних після очищення для розрахунку ATR.")
+
+    # Обчислення True Range
     high_low = data['high'] - data['low']
     high_close = abs(data['high'] - data['close'].shift())
     low_close = abs(data['low'] - data['close'].shift())
+
+    # Логування результатів перед обчисленням максимального значення
+    logger.debug(f"high_low:\n{high_low.tail()}")
+    logger.debug(f"high_close:\n{high_close.tail()}")
+    logger.debug(f"low_close:\n{low_close.tail()}")
 
     true_range = pd.DataFrame({
         'high_low': high_low,
@@ -84,14 +107,21 @@ def calculate_atr(data, window=14):
         'low_close': low_close
     })
 
-    true_range['tr'] = true_range.max(axis=1)
+    true_range['tr'] = true_range.max(axis=1)  # Обчислення True Range як максимальне з трьох значень
+
+    # Обчислення ATR як ковзного середнього True Range
     atr = true_range['tr'].rolling(window=window).mean()
 
-    logger.debug(f"Результат ATR: {atr.tail()}")
+    logger.info(f"Результат ATR: {atr.tail()}")
     return atr
+
 
 def calculate_cci(data, window=20):
     logger.info(f"Розрахунок CCI з вікном {window}.")
+
+    if not pd.api.types.is_numeric_dtype(data['high']):
+        logger.info(f"Значення ссi 'high': {data['high'].head()}")
+        raise ValueError("The cci 'high' column must contain numeric values.")
 
     if not all(col in data.columns for col in ['high', 'low', 'close']):
         raise ValueError("`data` must contain 'high', 'low', and 'close' columns.")
@@ -107,10 +137,24 @@ def calculate_cci(data, window=20):
 def calculate_obv(data):
     logger.info("Розрахунок OBV.")
 
+    # Перетворення 'volume' на числовий формат
+    data['volume'] = pd.to_numeric(data['volume'], errors='coerce')
+
+    # Видалення рядків з NaN після конвертації
+    data.dropna(subset=['volume'], inplace=True)
+
+    if data.empty:
+        logger.error("Недостатньо даних для розрахунку OBV після очищення 'volume'.")
+        raise ValueError("Недостатньо даних для розрахунку OBV.")
+
+    # Перевіряємо, чи всі стовпці є в даних
     if not all(col in data.columns for col in ['close', 'volume']):
         raise ValueError("`data` must contain 'close' and 'volume' columns.")
 
-    obv = [0]  # Початкове значення OBV
+    # Початкове значення OBV
+    obv = [0]
+
+    # Обчислення OBV на основі змін закриття та обсягу
     for i in range(1, len(data['close'])):
         if data['close'][i] > data['close'][i - 1]:
             obv.append(obv[-1] + data['volume'][i])
@@ -119,7 +163,10 @@ def calculate_obv(data):
         else:
             obv.append(obv[-1])
 
+    # Перетворюємо список в Series для зручності роботи з Pandas
     obv_series = pd.Series(obv, index=data.index)
+
     logger.debug(f"Результат OBV: {obv_series.tail()}")
     return obv_series
+
 

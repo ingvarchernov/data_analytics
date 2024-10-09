@@ -27,7 +27,7 @@ class PairHandler:
 
          # Якщо вибрано тренування
         if query.data == 'train_model':
-            await TrainingHandler.start_training(update, context)  # Запускаємо тренування моделі
+            await TrainingHandler.start_lstm_training(update, context)  # Запускаємо тренування моделі
             return
 
         # Зберігаємо обрану пару

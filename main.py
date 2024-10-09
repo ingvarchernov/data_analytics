@@ -27,7 +27,7 @@ def main():
     # Додаємо обробники команд та натискань
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("train_model", TrainingHandler.start_training))
+    application.add_handler(CommandHandler("train_model", TrainingHandler.start_lstm_training))
     application.add_handler(CallbackQueryHandler(PairHandler.handle_pair_selection))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, IndicatorHandler.handle_indicator_selection))

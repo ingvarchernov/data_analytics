@@ -9,10 +9,11 @@ from bi_api.data_extraction import get_historical_data
 import tensorflow as tf
 from tensorflow import keras
 import keras_tuner as kt
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=550, batch_size=32, n_splits=5):
+def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=200, batch_size=32, n_splits=4):
     logger.info(f"Завантаження даних для {symbol}.")
     data = get_historical_data(symbol)
 
@@ -69,23 +70,37 @@ def cross_validate_lstm(X, y, epochs, batch_size, n_splits):
         model = build_model_with_attention(X_train.shape[1:])
         history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val, y_val))
 
+        logger.info(f"Модель для {fold} збережена.")
+        # Збереження результатів тренування для кожного фолда
+        export_training_history(history, filename=f"training_history_fold_{fold}.csv")
+
         logger.info(f"Модель для Fold {fold} завершена.")
         plot_training_results(history, f"Fold {fold}")
         fold += 1
 
 def build_model_with_attention(input_shape):
-    model = Sequential()
-    model.add(layers.Bidirectional(layers.LSTM(units=50, return_sequences=True), input_shape=input_shape))
-    model.add(layers.LSTM(units=50, return_sequences=True))
+    inputs = layers.Input(shape=input_shape)
 
-    # Додавання Attention шару
-    model.add(layers.Attention())
+    # Bidirectional LSTM
+    lstm_out = layers.Bidirectional(layers.LSTM(128, return_sequences=True))(inputs)
 
-    model.add(layers.Dense(units=50, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01)))
-    model.add(layers.Dropout(0.2))
-    model.add(layers.Dense(units=1))
+    # Застосування Attention
+    attention_out = layers.Attention()([lstm_out, lstm_out])
 
-    model.compile(optimizer='adam', loss='mean_squared_error')
+    # Flatten після застосування Attention, щоб узгодити форму для Dense шару
+    flatten = layers.Flatten()(attention_out)
+
+    # Продовження побудови моделі
+    dense = layers.Dense(64, activation='relu')(flatten)
+    dropout = layers.Dropout(0.2)(dense)
+    outputs = layers.Dense(1, activation='sigmoid')(dropout)
+
+    # Створення моделі
+    model = keras.Model(inputs=inputs, outputs=outputs)
+
+    # Компіляція моделі
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
     return model
 
 def plot_training_results(history, title):
@@ -122,3 +137,11 @@ def hyperparameter_search(X_train, y_train, epochs):
     tuner.search(X_train, y_train, epochs=epochs, validation_split=0.2)
     best_model = tuner.get_best_models(num_models=1)[0]
     return best_model
+
+def export_training_history(history, filename='training_history.csv'):
+    # Отримуємо історію тренування з об'єкта history
+    history_df = pd.DataFrame(history.history)
+
+    # Зберігаємо дані у CSV файл
+    history_df.to_csv(filename, index=False)
+    print(f"Історію тренування збережено до {filename}")

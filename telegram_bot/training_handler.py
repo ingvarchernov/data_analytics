@@ -9,14 +9,22 @@ class TrainingHandler:
    @staticmethod
    async def start_lstm_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Запуск тренування LSTM моделі."""
-        await update.message.reply_text("Починаємо тренування моделі LSTM...")
+        query = update.callback_query
+        await query.answer()
+
+        # Отримання символу з вибраної пари
+        selected_pair = context.user_data.get('selected_pair', 'BTCUSDT')
+
+        await query.edit_message_text(f"Починаємо тренування моделі LSTM для {selected_pair}...")
         try:
-            result = train_lstm_model(symbol=context.user_data.get('selected_pair'))
+            # Запуск процесу тренування моделі
+            result = train_lstm_model(symbol=selected_pair)
+
             if result:
-                await update.message.reply_text("Тренування завершено успішно!")
+                await query.edit_message_text("Тренування завершено успішно!")
             else:
-                await update.message.reply_text("Сталася помилка під час тренування.")
+                await query.edit_message_text("Сталася помилка під час тренування.")
         except Exception as e:
             logger.error(f"Помилка під час тренування LSTM: {e}")
-            await update.message.reply_text(f"Помилка: {e}")
+            await query.edit_message_text(f"Помилка під час тренування: {e}")
 
