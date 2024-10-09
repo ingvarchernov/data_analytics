@@ -9,6 +9,7 @@ from bi_api.data_extraction import get_historical_data
 import tensorflow as tf
 from tensorflow import keras
 import keras_tuner as kt
+from keras.regularizers import l1_l2
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ def cross_validate_lstm(X, y, epochs, batch_size, n_splits):
 
         # Побудова моделі
         model = build_model_with_attention(X_train.shape[1:])
+
         history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val, y_val))
 
         logger.info(f"Модель для {fold} збережена.")
@@ -94,6 +96,10 @@ def build_model_with_attention(input_shape):
     dense = layers.Dense(64, activation='relu')(flatten)
     dropout = layers.Dropout(0.2)(dense)
     outputs = layers.Dense(1, activation='sigmoid')(dropout)
+
+    # Вихідний шар з L1 та L2 регуляризацією
+    outputs = layers.Dense(1, activation='sigmoid',
+                           kernel_regularizer=l1_l2(l1=1e-5, l2=1e-4))(dropout)
 
     # Створення моделі
     model = keras.Model(inputs=inputs, outputs=outputs)
