@@ -11,6 +11,7 @@ from tensorflow import keras
 import keras_tuner as kt
 from keras.regularizers import l1_l2
 import pandas as pd
+from openpyxl import load_workbook
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,8 @@ def cross_validate_lstm(X, y, epochs, batch_size, n_splits):
 
         history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val, y_val))
 
-        logger.info(f"Модель для {fold} збережена.")
         # Збереження результатів тренування для кожного фолда
-        export_training_history(history, filename=f"training_history_fold_{fold}.csv")
+        export_training_history(history, fold, filename=f"TH.xlsx")
 
         logger.info(f"Модель для Fold {fold} завершена.")
         plot_training_results(history, f"Fold {fold}")
@@ -144,10 +144,21 @@ def hyperparameter_search(X_train, y_train, epochs):
     best_model = tuner.get_best_models(num_models=1)[0]
     return best_model
 
-def export_training_history(history, filename='training_history.csv'):
+def export_training_history(history, fold_index, filename):
     # Отримуємо історію тренування з об'єкта history
     history_df = pd.DataFrame(history.history)
 
-    # Зберігаємо дані у CSV файл
-    history_df.to_csv(filename, index=False)
-    print(f"Історію тренування збережено до {filename}")
+    try:
+        # Завантажуємо існуючий Excel файл
+        with pd.ExcelWriter(filename, engine='openpyxl', mode='a') as writer:
+            sheet_name = f'Fold_{fold_index + 1}'
+            # Записуємо новий аркуш у файл
+            history_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    except FileNotFoundError:
+        # Якщо файл не існує, створюємо новий
+        with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
+            sheet_name = f'Fold_{fold_index + 1}'
+            history_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    print(f"Історію тренування для Fold {fold_index + 1} збережено до {filename}")
