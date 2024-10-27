@@ -25,7 +25,7 @@ Control and monitoring functionalities are available via a Telegram bot, allowin
 
 Tech Stack
 Backend: Python, FastAPI
-Frontend: Vue.js
+Frontend: Telegram bot visualization
 Machine Learning: Keras, TensorFlow
 Data Storage: PyMySQL
 Messaging: Telegram Bot API
@@ -33,45 +33,7 @@ Visualization: matplotlib, mplfinance
 Getting Started
 Prerequisites
 Python 3.8+
-Node.js and npm
 MySQL or compatible database
-Installation
-Clone the repository:
-
-bash
-Копіювати код
-git clone https://github.com/ingvarchernov/new.git
-cd new
-Set up a virtual environment:
-
-bash
-Копіювати код
-python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-Install the necessary Python packages:
-
-bash
-Копіювати код
-pip install -r requirements.txt
-Set up the database and environment variables (instructions provided in config/README.md).
-
-Running the Application
-Backend: Start FastAPI:
-
-bash
-Копіювати код
-uvicorn main:app --reload
-Frontend: Navigate to the frontend folder and start Vue.js:
-
-bash
-Копіювати код
-cd frontend
-npm install
-npm run serve
-Telegram Bot: Configure and run the bot (see bot/README.md).
-
-Contributing
-Contributions to this project are welcome. Please submit a pull request or contact the repository owner for major changes.
 
 License
 This project is licensed under the MIT License.
