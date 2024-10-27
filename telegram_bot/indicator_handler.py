@@ -1,20 +1,52 @@
-import pandas as pd
-import io
-import matplotlib.pyplot as plt
-import logging
-import mplfinance as mpf
-from io import BytesIO
 from telegram import Update, ReplyKeyboardMarkup, InputFile
+import pandas as pd
+import mplfinance as mpf
+import matplotlib.pyplot as plt
+from io import BytesIO
 from telegram.ext import ContextTypes
+import logging
 from bi_api.data_extraction import get_historical_data
 from indicators.technical_indicators import calculate_rsi, calculate_macd, calculate_bollinger_bands, calculate_stochastic
 
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 class IndicatorHandler:
     @staticmethod
-    async def select_indicators(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Показати клавіатуру для вибору технічних індикаторів після вибору пари"""
+    async def select_pair(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Вибір пари для індикаторів."""
+        await update.callback_query.edit_message_text("Виберіть пару для аналізу.")
+        # Додати логіку для вибору пари (можливо, через інші кнопки або вибір користувача).
+
+    @staticmethod
+    async def handle_tech_indicators_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        from main import START_ROUTES
+
+        """Обробка вибору індикаторів."""
+        query = update.callback_query
+        await query.answer()
+
+        if query.data == str(5):  # BACK_TO_START
+            await query.edit_message_text("Повернення до головного меню.")
+            return START_ROUTES  # Повернення до головного меню
+
+        elif query.data == str(3):  # CHOOSE_INDICATORS
+            await IndicatorHandler.select_pair(update, context)
+            await IndicatorHandler.select_indicators(update, context)
+
+        elif query.data == str(4):  # ALL_INDICATORS
+            context.user_data['selected_indicators'] = ["RSI", "MACD", "Bollinger Bands", "Stochastic"]
+            await query.edit_message_text(f"Обрано всі індикатори: {', '.join(context.user_data['selected_indicators'])}")
+            await IndicatorHandler.show_info(update, context)
+
+        return 1  # Залишаємося у тому ж стані
+
+    @staticmethod
+    async def select_indicators(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Показати клавіатуру для вибору технічних індикаторів після вибору пари."""
         indicators = [["RSI", "MACD"], ["Bollinger Bands", "Stochastic"], ["Усі"]]
         keyboard = ReplyKeyboardMarkup(indicators, one_time_keyboard=True)
 
@@ -22,8 +54,8 @@ class IndicatorHandler:
             await update.callback_query.message.reply_text("Оберіть технічні індикатори:", reply_markup=keyboard)
 
     @staticmethod
-    async def handle_indicator_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обробка вибору індикаторів та виконання аналізу"""
+    async def handle_indicator_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Обробка вибору індикаторів та виконання аналізу."""
         selected_indicators = update.message.text if update.message else update.callback_query.data
 
         if selected_indicators == "Усі":
@@ -39,6 +71,7 @@ class IndicatorHandler:
             await update.callback_query.message.reply_text(response_text)
 
         await IndicatorHandler.show_info(update, context)
+        return 1  # Повертаємося до вибору дій після виконання аналізу
 
     @staticmethod
     async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -62,7 +95,7 @@ class IndicatorHandler:
             # Конвертуємо дані у числовий формат
             numeric_columns = ['open', 'high', 'low', 'close', 'volume']
             for col in numeric_columns:
-                data[col] = pd.to_numeric(data[col], errors='coerce')  # Конвертуємо в числовий формат з обробкою помилок
+                data[col] = pd.to_numeric(data[col], errors='coerce')
 
             # Видаляємо рядки з пропущеними значеннями, якщо такі є
             data.dropna(subset=numeric_columns, inplace=True)
@@ -112,9 +145,10 @@ class IndicatorHandler:
             image_stream.seek(0)  # Переміщаємо курсор на початок
             plt.close(fig)
 
-            # Відправка графіка в Telegram
-            await update.message.reply_photo(photo=InputFile(image_stream, filename='chart.png'))
+            # Відправка графіка в Telegram через callback_query
+            await update.callback_query.message.reply_photo(photo=InputFile(image_stream, filename='chart.png'))
 
         except Exception as e:
             logger.error(f"Помилка при отриманні даних: {e}")
-            await update.message.reply_text('Виникла помилка при отриманні даних.')
+            await update.callback_query.message.reply_text('Виникла помилка при отриманні даних.')
+

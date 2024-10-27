@@ -15,13 +15,13 @@ from openpyxl import load_workbook
 
 logger = logging.getLogger(__name__)
 
-def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=200, batch_size=32, n_splits=4):
+def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=50, batch_size=32, n_splits=2):
     logger.info(f"Завантаження даних для {symbol}.")
     data = get_historical_data(symbol)
 
     if data is None or data.empty:
         logger.error(f"Дані для {symbol} не були завантажені.")
-        return None
+        return None, None  # Повертаємо None для обох очікуваних значень
 
     # Розрахунок технічних індикаторів
     logger.info(f"Розрахунок технічних індикаторів для {symbol}.")
@@ -38,11 +38,13 @@ def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=200, batch_size=32, 
 
     if data.empty:
         logger.error(f"Після розрахунку індикаторів немає достатньо даних для {symbol}.")
-        return None
+        return None, None  # Повертаємо None для обох очікуваних значень
 
     logger.info("Масштабування даних.")
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(data[['close', 'RSI', 'MACD', 'MACD_Signal', 'EMA', 'ATR', 'CCI', 'OBV']].values)
+
+    logger.info(f"Форма масштабованих даних: {scaled_data.shape}")
 
     logger.info("Формування навчальних даних для моделі LSTM.")
     X, y = [], []
@@ -54,16 +56,28 @@ def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=200, batch_size=32, 
 
     if X.shape[0] == 0:
         logger.error("Недостатньо даних для тренування.")
-        return None
+        return None, None  # Повертаємо None для обох очікуваних значень
 
+    logger.info(f"Форма X: {X.shape}, форма y: {y.shape}")
+
+    # Тренування моделі через крос-валідацію
     logger.info("Початок крос-валідації та тренування.")
-    cross_validate_lstm(X, y, epochs, batch_size, n_splits)
+    histories, filename = cross_validate_lstm(X, y, epochs, batch_size, n_splits)
 
-    return None
+    # Якщо немає історії, повертаємо None
+    if not histories:
+        logger.error("Крос-валідація не повернула жодної історії тренування.")
+        return None, None
+
+    return histories, filename  # Повертаємо історію тренувань та назву файлу Excel
+
 
 def cross_validate_lstm(X, y, epochs, batch_size, n_splits):
     kfold = KFold(n_splits=n_splits, shuffle=True)
     fold = 1
+    histories = []
+    filename = 'training_history.xlsx'  # Назва файлу для збереження історії тренування
+
     for train_index, val_index in kfold.split(X):
         X_train, X_val = X[train_index], X[val_index]
         y_train, y_val = y[train_index], y[val_index]
@@ -71,14 +85,20 @@ def cross_validate_lstm(X, y, epochs, batch_size, n_splits):
         # Побудова моделі
         model = build_model_with_attention(X_train.shape[1:])
 
+        # Тренування моделі
         history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val, y_val))
 
-        # Збереження результатів тренування для кожного фолда
-        export_training_history(history, fold, filename=f"TH.xlsx")
+        if history is not None:
+            histories.append(history)  # Збереження історії тренування для кожного фолду
+            export_training_history(history, fold, filename)  # Експорт результатів тренування у Excel
 
-        logger.info(f"Модель для Fold {fold} завершена.")
-        plot_training_results(history, f"Fold {fold}")
+            logger.info(f"Модель для Fold {fold} завершена.")
+        else:
+            logger.error(f"Помилка тренування для Fold {fold}. Історія не збережена.")
+
         fold += 1
+
+    return histories, filename  # Повертаємо всі історії тренувань та файл Excel
 
 def build_model_with_attention(input_shape):
     inputs = layers.Input(shape=input_shape)
@@ -109,16 +129,6 @@ def build_model_with_attention(input_shape):
 
     return model
 
-def plot_training_results(history, title):
-    logger.info(f"Побудова графіків втрат для {title}.")
-    plt.plot(history.history['loss'], label='Втрати на навчальних даних')
-    plt.plot(history.history['val_loss'], label='Втрати на валідаційних даних')
-    plt.title(f'Втрати під час тренування для {title}')
-    plt.xlabel('Епохи')
-    plt.ylabel('Втрати (MSE)')
-    plt.legend()
-    plt.show()
-
 # Гіперпараметричний пошук з Keras Tuner
 def hyperparameter_search(X_train, y_train, epochs):
     def model_builder(hp):
@@ -145,20 +155,26 @@ def hyperparameter_search(X_train, y_train, epochs):
     return best_model
 
 def export_training_history(history, fold_index, filename):
-    # Отримуємо історію тренування з об'єкта history
     history_df = pd.DataFrame(history.history)
+    sheet_name = f'Fold_{fold_index + 1}'
 
     try:
-        # Завантажуємо існуючий Excel файл
-        with pd.ExcelWriter(filename, engine='openpyxl', mode='a') as writer:
-            sheet_name = f'Fold_{fold_index + 1}'
-            # Записуємо новий аркуш у файл
-            history_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        # Відкриваємо існуючий файл
+        book = load_workbook(filename)
 
+        # Якщо аркуш вже існує, видаляємо його
+        if sheet_name in book.sheetnames:
+            std = book[sheet_name]
+            book.remove(std)
+
+        # Використовуємо book для створення нових аркушів без необхідності встановлення 'book'
+        with pd.ExcelWriter(filename, engine='openpyxl', mode='a') as writer:
+            writer._book = book  # Використовуємо прихований атрибут _book
+            history_df.to_excel(writer, sheet_name=sheet_name, index=False)
     except FileNotFoundError:
         # Якщо файл не існує, створюємо новий
         with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
-            sheet_name = f'Fold_{fold_index + 1}'
             history_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
     print(f"Історію тренування для Fold {fold_index + 1} збережено до {filename}")
+
