@@ -1,3 +1,5 @@
+New Project
+
 Welcome to the New Project repository! This project demonstrates a set of skills and technologies designed to provide valuable functionality and insights, ranging from data processing and analysis to web interface implementation. Below is an overview of the project's components and technical aspects.
 
 Project Overview
