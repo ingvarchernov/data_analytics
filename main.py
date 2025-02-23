@@ -18,7 +18,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Define stages for ConversationHandler
-START_ROUTES, END_ROUTES = range(2)
+# Визначення станів
+START_ROUTES, SELECT_CURRENCY_PAIR, INDICATOR_SELECTION, END_ROUTES = range(4)
 
 # Callback data
 AI_MODEL, TECH_INDICATORS, START_TRAINING, CHOOSE_INDICATORS, ALL_INDICATORS, BACK_TO_START, SELECT_CURRENCY_PAIR = range(7)
@@ -70,17 +71,27 @@ async def show_tech_indicators_menu(update: Update, context: ContextTypes.DEFAUL
     return START_ROUTES
 
 @staticmethod
+# Функція вибору валютної пари
 async def select_currency_pair(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обробка вибору валютної пари."""
     query = update.callback_query
     await query.answer()
-    selected_pair = query.data  # Зберігаємо вибрану валютну пару
-    context.user_data['selected_pair'] = selected_pair  # Зберігаємо в user_data
-
+    selected_pair = query.data
+    context.user_data['selected_pair'] = selected_pair
     await query.edit_message_text(f"Ви обрали валютну пару: {selected_pair}. Тепер оберіть індикатори.")
-    # Переходимо до вибору індикаторів
-    await show_tech_indicators_menu(update, context)  # Виклик функції для відображення меню індикаторів
-    return START_ROUTES
+    await show_tech_indicators_menu(update, context)
+    return INDICATOR_SELECTION
+
+# Допоміжна функція, яка не повертає стан
+async def show_tech_indicators_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("Choose", callback_data=str(CHOOSE_INDICATORS))],
+        [InlineKeyboardButton("All", callback_data=str(ALL_INDICATORS))],
+        [InlineKeyboardButton("Назад", callback_data=str(BACK_TO_START))]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Оберіть дію для технічних індикаторів:", reply_markup=reply_markup)
 
 async def show_currency_pair_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Меню для вибору валютних пар."""
@@ -131,12 +142,15 @@ def main() -> None:
         START_ROUTES: [
             CallbackQueryHandler(show_ai_model_menu, pattern="^" + str(AI_MODEL) + "$"),
             CallbackQueryHandler(TrainingHandler.handle_ai_model_selection, pattern="^" + str(START_TRAINING) + "$"),
-            CallbackQueryHandler(show_currency_pair_menu, pattern="^" + str(TECH_INDICATORS) + "$"),  # Змінюємо на вибір пар
+            CallbackQueryHandler(show_currency_pair_menu, pattern="^" + str(TECH_INDICATORS) + "$"),
+            CallbackQueryHandler(IndicatorHandler.handle_tech_indicators_selection, pattern="^" + str(CHOOSE_INDICATORS) + "$"),
+            CallbackQueryHandler(IndicatorHandler.handle_tech_indicators_selection, pattern="^" + str(ALL_INDICATORS) + "$"),
+            CallbackQueryHandler(start_over, pattern="^" + str(BACK_TO_START) + "$"),
         ],
-         SELECT_CURRENCY_PAIR: [
-                CallbackQueryHandler(select_currency_pair, pattern="^(" + "|".join(CURRENCY_PAIRS) + ")$"),  # Додаємо обробку валютних пар
-            ],
-        START_ROUTES: [
+        SELECT_CURRENCY_PAIR: [
+            CallbackQueryHandler(select_currency_pair, pattern="^(" + "|".join(CURRENCY_PAIRS) + ")$"),
+        ],
+        INDICATOR_SELECTION: [
             CallbackQueryHandler(IndicatorHandler.handle_tech_indicators_selection, pattern="^" + str(CHOOSE_INDICATORS) + "$"),
             CallbackQueryHandler(IndicatorHandler.handle_tech_indicators_selection, pattern="^" + str(ALL_INDICATORS) + "$"),
             CallbackQueryHandler(start_over, pattern="^" + str(BACK_TO_START) + "$"),
