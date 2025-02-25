@@ -1,27 +1,22 @@
 import numpy as np
 import logging
-import matplotlib.pyplot as plt
-from keras.api import Sequential, layers
+from keras import layers
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import KFold
 from indicators.technical_indicators import calculate_rsi, calculate_macd, calculate_bollinger_bands, calculate_stochastic, calculate_ema, calculate_atr, calculate_cci, calculate_obv
 from bi_api.data_extraction import get_historical_data
 import tensorflow as tf
-from tensorflow import keras
-import keras_tuner as kt
-from keras.regularizers import l1_l2
 import pandas as pd
-from openpyxl import load_workbook
 
 logger = logging.getLogger(__name__)
 
-def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=50, batch_size=32, n_splits=2):
+def train_lstm_model(symbol='BTCUSDT', look_back=240, epochs=100, batch_size=64, n_splits=3):
     logger.info(f"Завантаження даних для {symbol}.")
-    data = get_historical_data(symbol)
+    data = get_historical_data(symbol, interval='1h', days_back=90)
 
     if data is None or data.empty:
-        logger.error(f"Дані для {symbol} не були завантажені.")
-        return None, None  # Повертаємо None для обох очікуваних значень
+        logger.error(f"Дані для {symbol} не завантажено.")
+        return None, None
 
     # Розрахунок технічних індикаторів
     logger.info(f"Розрахунок технічних індикаторів для {symbol}.")
@@ -35,146 +30,122 @@ def train_lstm_model(symbol='BTCUSDT', look_back=60, epochs=50, batch_size=32, n
     data['OBV'] = calculate_obv(data)
 
     data = data.dropna()
-
     if data.empty:
-        logger.error(f"Після розрахунку індикаторів немає достатньо даних для {symbol}.")
-        return None, None  # Повертаємо None для обох очікуваних значень
+        logger.error(f"Після розрахунку індикаторів даних недостатньо для {symbol}.")
+        return None, None
 
+    # Використовуємо логарифмовані ціни та додаткові ознаки
     logger.info("Масштабування даних.")
+    features = ['log_open', 'log_high', 'log_low', 'log_close', 'log_volume',
+                'quote_av', 'trades', 'RSI', 'MACD', 'MACD_Signal',
+                'Upper_Band', 'Lower_Band', 'Stoch', 'Stoch_Signal', 'EMA', 'ATR', 'CCI', 'OBV']
     scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_data = scaler.fit_transform(data[['close', 'RSI', 'MACD', 'MACD_Signal', 'EMA', 'ATR', 'CCI', 'OBV']].values)
+    scaled_data = scaler.fit_transform(data[features])
 
     logger.info(f"Форма масштабованих даних: {scaled_data.shape}")
 
+    # Формування навчальних даних із більшим look_back
     logger.info("Формування навчальних даних для моделі LSTM.")
     X, y = [], []
     for i in range(look_back, len(scaled_data)):
         X.append(scaled_data[i - look_back:i])
-        y.append(scaled_data[i, 0])
+        y.append(scaled_data[i, 3])  # Індекс 3 — 'log_close'
 
     X, y = np.array(X), np.array(y)
-
     if X.shape[0] == 0:
         logger.error("Недостатньо даних для тренування.")
-        return None, None  # Повертаємо None для обох очікуваних значень
+        return None, None
 
     logger.info(f"Форма X: {X.shape}, форма y: {y.shape}")
 
-    # Тренування моделі через крос-валідацію
+    # Крос-валідація
     logger.info("Початок крос-валідації та тренування.")
-    histories, filename = cross_validate_lstm(X, y, epochs, batch_size, n_splits)
+    histories, filename = cross_validate_lstm(X, y, epochs, batch_size, n_splits, scaler, data, features)
 
-    # Якщо немає історії, повертаємо None
     if not histories:
         logger.error("Крос-валідація не повернула жодної історії тренування.")
         return None, None
 
-    return histories, filename  # Повертаємо історію тренувань та назву файлу Excel
+    return histories, filename
 
-
-def cross_validate_lstm(X, y, epochs, batch_size, n_splits):
-    kfold = KFold(n_splits=n_splits, shuffle=True)
+def cross_validate_lstm(X, y, epochs, batch_size, n_splits, scaler, data, features):
+    kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
     fold = 1
     histories = []
-    filename = 'training_history.xlsx'  # Назва файлу для збереження історії тренування
+    filename = 'training_history.xlsx'
 
     for train_index, val_index in kfold.split(X):
         X_train, X_val = X[train_index], X[val_index]
         y_train, y_val = y[train_index], y[val_index]
 
-        # Побудова моделі
         model = build_model_with_attention(X_train.shape[1:])
+        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6)
 
-        # Тренування моделі
-        history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val, y_val))
+        history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size,
+                            validation_data=(X_val, y_val), callbacks=[early_stopping, reduce_lr], verbose=1)
 
-        if history is not None:
-            histories.append(history)  # Збереження історії тренування для кожного фолду
-            export_training_history(history, fold, filename)  # Експорт результатів тренування у Excel
+        # Зворотне масштабування для оцінки реальних цін
+        val_predictions = model.predict(X_val)
+        real_preds = inverse_transform_predictions(val_predictions, scaler, data, features)
+        real_y_val = inverse_transform_predictions(y_val, scaler, data, features)
+        real_mae = np.mean(np.abs(real_preds - real_y_val))
+        logger.info(f"Fold {fold} - Реальний MAE у одиницях BTC/USDT: {real_mae:.2f}")
 
-            logger.info(f"Модель для Fold {fold} завершена.")
-        else:
-            logger.error(f"Помилка тренування для Fold {fold}. Історія не збережена.")
+        histories.append(history)
 
+        history_df = pd.DataFrame(history.history)
+        history_df['real_mae'] = real_mae  # Додаємо реальний MAE до історії
+        sheet_name = f'Fold_{fold}'
+        try:
+            with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                history_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        except FileNotFoundError:
+            with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
+                history_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        logger.info(f"Модель для Fold {fold} завершена.")
         fold += 1
 
-    return histories, filename  # Повертаємо всі історії тренувань та файл Excel
+    model.save(f'lstm_model_fold_{fold-1}.keras')
+    return histories, filename
 
 def build_model_with_attention(input_shape):
     inputs = layers.Input(shape=input_shape)
+    lstm_1 = layers.LSTM(512, return_sequences=True, recurrent_dropout=0.3,
+                         kernel_regularizer=tf.keras.regularizers.l2(0.001))(inputs)
+    lstm_2 = layers.LSTM(256, return_sequences=True, recurrent_dropout=0.3,
+                         kernel_regularizer=tf.keras.regularizers.l2(0.001))(lstm_1)
+    lstm_3 = layers.Bidirectional(layers.LSTM(128, return_sequences=True))(lstm_2)
+    attention_out = layers.Attention()([lstm_3, lstm_3])
+    pool_out = layers.GlobalAveragePooling1D()(attention_out)
+    dense_1 = layers.Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(pool_out)
+    dropout_1 = layers.Dropout(0.3)(dense_1)
+    dense_2 = layers.Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.001))(dropout_1)
+    dropout_2 = layers.Dropout(0.3)(dense_2)
+    outputs = layers.Dense(1, activation='linear')(dropout_2)
 
-    # Bidirectional LSTM
-    lstm_out = layers.Bidirectional(layers.LSTM(128, return_sequences=True))(inputs)
-
-    # Застосування Attention
-    attention_out = layers.Attention()([lstm_out, lstm_out])
-
-    # Flatten після застосування Attention, щоб узгодити форму для Dense шару
-    flatten = layers.Flatten()(attention_out)
-
-    # Продовження побудови моделі
-    dense = layers.Dense(64, activation='relu')(flatten)
-    dropout = layers.Dropout(0.2)(dense)
-    outputs = layers.Dense(1, activation='sigmoid')(dropout)
-
-    # Вихідний шар з L1 та L2 регуляризацією
-    outputs = layers.Dense(1, activation='sigmoid',
-                           kernel_regularizer=l1_l2(l1=1e-5, l2=1e-4))(dropout)
-
-    # Створення моделі
-    model = keras.Model(inputs=inputs, outputs=outputs)
-
-    # Компіляція моделі
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.00005),
+                  loss='mean_squared_error', metrics=['mae'])
     return model
 
-# Гіперпараметричний пошук з Keras Tuner
-def hyperparameter_search(X_train, y_train, epochs):
-    def model_builder(hp):
-        model = keras.Sequential()
-        hp_units = hp.Int('units', min_value=32, max_value=128, step=16)
-        model.add(keras.layers.LSTM(units=hp_units, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=True))
-
-        hp_dropout = hp.Float('dropout', min_value=0.0, max_value=0.5, step=0.1)
-        model.add(keras.layers.Dropout(hp_dropout))
-
-        model.add(keras.layers.Dense(units=1))
-        model.compile(optimizer='adam', loss='mean_squared_error')
-        return model
-
-    tuner = kt.RandomSearch(
-        model_builder,
-        objective='val_loss',
-        max_trials=10,
-        executions_per_trial=3
-    )
-
-    tuner.search(X_train, y_train, epochs=epochs, validation_split=0.2)
-    best_model = tuner.get_best_models(num_models=1)[0]
-    return best_model
+def inverse_transform_predictions(predictions, scaler, data, features):
+    """Зворотне масштабування прогнозів до реальних цін."""
+    dummy = np.zeros((len(predictions), len(features)))
+    dummy[:, 3] = predictions.flatten()  # Індекс 3 — 'log_close'
+    scaled_back = scaler.inverse_transform(dummy)
+    real_preds = np.expm1(scaled_back[:, 3])  # Зворотнє логарифмування
+    return real_preds
 
 def export_training_history(history, fold_index, filename):
     history_df = pd.DataFrame(history.history)
     sheet_name = f'Fold_{fold_index + 1}'
-
     try:
-        # Відкриваємо існуючий файл
-        book = load_workbook(filename)
-
-        # Якщо аркуш вже існує, видаляємо його
-        if sheet_name in book.sheetnames:
-            std = book[sheet_name]
-            book.remove(std)
-
-        # Використовуємо book для створення нових аркушів без необхідності встановлення 'book'
-        with pd.ExcelWriter(filename, engine='openpyxl', mode='a') as writer:
-            writer._book = book  # Використовуємо прихований атрибут _book
+        with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
             history_df.to_excel(writer, sheet_name=sheet_name, index=False)
     except FileNotFoundError:
-        # Якщо файл не існує, створюємо новий
         with pd.ExcelWriter(filename, engine='openpyxl', mode='w') as writer:
             history_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    print(f"Історію тренування для Fold {fold_index + 1} збережено до {filename}")
-
+    logger.info(f"Історію тренування для Fold {fold_index + 1} збережено до {filename}")

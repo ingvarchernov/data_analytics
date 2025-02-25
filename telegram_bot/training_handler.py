@@ -17,36 +17,31 @@ class TrainingHandler:
 
         # Отримання символу з вибраної пари
         selected_pair = context.user_data.get('selected_pair', 'BTCUSDT')
-        logger.info(f"Selected pair for training: {selected_pair}")
+        logger.info(f"Вибрана пара для тренування: {selected_pair}")
 
         await query.edit_message_text(f"Починаємо тренування моделі LSTM для {selected_pair}...")
         try:
             # Запуск процесу тренування моделі
-            try:
-                logger.info(f"Запуск тренування для символу: {selected_pair}")
-                history, filename = train_lstm_model(symbol=selected_pair)
-                logger.info(f"Тренування завершено для символу: {selected_pair}")
-            except Exception as e:
-                logger.error(f"Помилка виклику train_lstm_model: {e}")
-                raise
+            logger.info(f"Запуск тренування для символу: {selected_pair}")
+            histories, filename = train_lstm_model(symbol=selected_pair)
+            logger.info(f"Тренування завершено для символу: {selected_pair}")
 
-            if history is not None:
-                # Збереження історії тренування до Excel
-                for fold_index, histories in enumerate(history):  # Assuming history contains multiple folds
-                    export_training_history(histories, fold_index, filename)
+            if histories is not None:
+                # Збереження історії тренування до Excel (зазвичай це вже зроблено в cross_validate_lstm)
+                # Але якщо потрібно викликати export_training_history окремо:
+                for fold_index, history in enumerate(histories):
+                    export_training_history(history, fold_index, filename)
 
                 logger.info(f"Відправляємо файл {filename} користувачеві.")
-
-                # Відправка Excel файлу в Telegram
                 with open(filename, 'rb') as file:
                     await query.message.reply_document(InputFile(file, filename=filename))
 
-                await query.edit_message_text("Тренування завершено успішно! Excel файл збережено.")
+                await query.edit_message_text("Тренування завершено успішно! Файл із результатами надіслано.")
             else:
-                await query.edit_message_text("Сталася помилка під час тренування.")
+                await query.edit_message_text("Сталася помилка під час тренування: дані не отримано.")
         except Exception as e:
             logger.error(f"Помилка під час тренування LSTM: {e}")
-            await query.edit_message_text(f"Помилка під час тренування: {e}")
+            await query.edit_message_text(f"Помилка під час тренування: {str(e)}")
 
     @staticmethod
     async def handle_ai_model_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -55,13 +50,11 @@ class TrainingHandler:
         query = update.callback_query
         await query.answer()
 
-        logger.info(f"Callback query data: {query.data}")  # Додаємо логування
+        logger.info(f"Дані зворотного виклику: {query.data}")
 
-
-        if  query.data == str(2):  # START_TRAINING
-            # Викликаємо тренування моделі
+        if query.data == "2":  # START_TRAINING (str(2) для консистентності з main.py)
             await TrainingHandler.start_lstm_training(update, context)
-            logger.info(f"Вибираємо розпочати тренування {query}")
-            return END_ROUTES  # Переходимо до кінця розмови після тренування
+            logger.info("Тренування моделі розпочато.")
+            return END_ROUTES  # Завершуємо розмову після тренування
 
-        return ConversationHandler.END  # Завершуємо розмову, якщо не співпадає
+        return ConversationHandler.END  # Завершуємо, якщо вибір не співпадає

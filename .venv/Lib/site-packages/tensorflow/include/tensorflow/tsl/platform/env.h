@@ -352,8 +352,8 @@ class Env {
   /// If this returns false, TensorFlow will write directly to output files
   /// instead of creating a temporary file and swapping it in. This may mean
   /// that incomplete writes are visible to consumers.
-  Status CanCreateTempFile(const std::string& fname,
-                           bool* can_create_temp_file);
+  absl::Status CanCreateTempFile(const std::string& fname,
+                                 bool* can_create_temp_file);
 
   /// Stores the size of `fname` in `*file_size`.
   absl::Status GetFileSize(const std::string& fname, uint64* file_size);
@@ -640,7 +640,7 @@ absl::Status ReadFileToString(Env* env, const std::string& fname,
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
-                               const StringPiece& data);
+                               const absl::string_view& data);
 
 /// Write binary representation of "proto" to the named file.
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,
