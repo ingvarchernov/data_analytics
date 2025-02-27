@@ -1,2 +1,5 @@
 config.py
 .venv
+bfg.jar
+__pycache__
+.gitattributes
